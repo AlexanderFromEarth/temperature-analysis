@@ -31,7 +31,7 @@ def download_data(url: str, path_to_data: str) -> None:
         if bool(tr.get('style'))
     }.items():
         with open(f'{directory_path}/{filename}.csv', 'w') as f:
-            f.write('\n'.join(f'{ts[:19], ts[21:]}' for ts in get(fetch_url).text.split('\r\n')))
+            f.write('\n'.join(f'{ts[:19]}, {ts[20:]}' for ts in get(fetch_url).text.split('\r\n')[:-1]))
 
 
 if __name__ == '__main__':
