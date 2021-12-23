@@ -55,8 +55,7 @@ def to_file(filename: str, dataset: DataFrame) -> None:
 
 
 def to_cli(dataset: DataFrame) -> None:
-    stdout.write(dataset.to_string())
-    stdout.write('\n')
+    stdout.write(dataset.to_csv())
 
 
 if __name__ == '__main__':
