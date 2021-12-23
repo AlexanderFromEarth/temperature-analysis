@@ -1,43 +1,65 @@
 from argparse import ArgumentParser
 from itertools import takewhile
-from os import mkdir
 from pathlib import Path
+from urllib.parse import urljoin
+from sys import stdout
+from typing import Callable
 
 from bs4 import BeautifulSoup
 from requests import get
 
 
-def download_data(url: str, path_to_data: str) -> None:
-    html = get(url).text
-    parsed_html = BeautifulSoup(html, 'html.parser')
-    directory_path = f'{Path.cwd()}/{path_to_data}/{parsed_html.text[:19]}'
+def download_data(directory: str = None) -> None:
+    base_url = 'https://sensors.mwlabs.ru'
+    html = get(base_url).text
+    bs = BeautifulSoup(html, 'html.parser')
 
-    mkdir(directory_path)
-
-    for filename, fetch_url in {
-        f'{tr.td.text}{tr_local.td.a.text}': f'{url}{tr_local.td.a.get("href")}'
-        for tr in parsed_html.find_all('tr')
-        for tr_local in (
-            tr_sibling
-            for tr_sibling in takewhile(
+    sensors_urls = {
+        '_'.join((tr_place.td.a.text, tr_class.td.text.replace('-', '_'))): tr_place.td.a.get('href')
+        for tr_class in bs.find_all('tr')
+        for tr_place in (
+            sibling
+            for sibling in takewhile(
                 lambda sibling: not bool(sibling.get('style')),
-                tr.find_next_siblings('tr')
+                tr_class.find_next_siblings('tr')
             )
-            if all(
-                not bool(td.get('style'))
-                for td in tr_sibling.find_all('td')
+            if all(not bool(td.get('style')) for td in sibling.find_all('td'))
+        )
+        if bool(tr_class.get('style'))
+    }
+
+    handler = path_resolver(directory) if directory else to_cli
+
+    for sensor, url in sensors_urls.items():
+        handler(
+            sensor,
+            '\n'.join(
+                f'{ts[:19]}, {ts[20:]}' for ts in get(urljoin(base_url, url)).text.split('\r\n')[:-1]
             )
         )
-        if bool(tr.get('style'))
-    }.items():
-        with open(f'{directory_path}/{filename}.csv', 'w') as f:
-            f.write('\n'.join(f'{ts[:19]}, {ts[20:]}' for ts in get(fetch_url).text.split('\r\n')[:-1]))
+
+
+def path_resolver(directory: str) -> Callable[[str, str], None]:
+    directory_path = Path.cwd()/Path(directory)
+    directory_path.mkdir(parents=True)
+
+    def to_file(sensor: str, payload: str) -> None:
+        with open(directory_path/f'{sensor}.csv', 'w') as f:
+            f.write(payload)
+
+    return to_file
+
+
+def to_cli(sensor: str, payload: str) -> None:
+    stdout.write(f'{sensor}\n')
+    stdout.write(payload)
+    stdout.write('\n')
+    stdout.write('...\n')
 
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--dir', dest='dir', default='../data/temperatures', help='Directory path')
-    parser.add_argument('--url', dest='url', default='http://sensors.mwlabs.ru', help='Url of sensors data')
+    parser.add_argument('--out', dest='out', help='Directory to save data')
     args = parser.parse_args()
 
-    download_data(args.url, args.dir)
+    download_data(args.out)
